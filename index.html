@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🎙️ Hlasový grill (SK)</title>
+<style>
+  :root {
+    --bg: #12100e; --panel: #1e1a17; --panel2: #272220; --text: #ede6dd;
+    --muted: #9c9186; --accent: #d97b4a; --accent2: #7aa87a; --danger: #c0564f;
+    --user: #2c3a4a; --asst: #3a2f28; --radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text);
+    display: flex; flex-direction: column; height: 100dvh; max-width: 900px; margin: 0 auto;
+  }
+  header {
+    padding: 10px 16px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    border-bottom: 1px solid #332c27;
+  }
+  header h1 { font-size: 1.05rem; font-weight: 600; flex: 1; }
+  button {
+    background: var(--panel2); color: var(--text); border: 1px solid #443a33;
+    border-radius: var(--radius); padding: 8px 14px; font-size: .9rem; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #1a120c; font-weight: 600; }
+  button.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+  #setup {
+    background: var(--panel); padding: 14px 16px; border-bottom: 1px solid #332c27;
+    display: grid; gap: 10px;
+  }
+  #setup.hidden { display: none; }
+  #setup label { font-size: .8rem; color: var(--muted); display: block; margin-bottom: 3px; }
+  #setup input, #setup select, #setup textarea {
+    width: 100%; background: var(--bg); color: var(--text); border: 1px solid #443a33;
+    border-radius: 8px; padding: 8px 10px; font-size: .9rem; font-family: inherit;
+  }
+  #setup textarea { min-height: 110px; resize: vertical; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .hint { font-size: .75rem; color: var(--muted); }
+  #chat { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 85%; padding: 10px 14px; border-radius: var(--radius); line-height: 1.45; white-space: pre-wrap; font-size: .95rem; }
+  .msg.user { background: var(--user); align-self: flex-end; border-bottom-right-radius: 3px; }
+  .msg.assistant { background: var(--asst); align-self: flex-start; border-bottom-left-radius: 3px; }
+  .msg.system { background: transparent; color: var(--muted); font-size: .8rem; align-self: center; text-align: center; }
+  #controls {
+    padding: 12px 16px; border-top: 1px solid #332c27; background: var(--panel);
+    display: flex; gap: 10px; align-items: center;
+  }
+  #micBtn {
+    width: 64px; height: 64px; border-radius: 50%; font-size: 1.6rem; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; transition: all .2s;
+  }
+  #micBtn.listening { background: var(--danger); border-color: var(--danger); animation: pulse 1.2s infinite; }
+  #micBtn.speaking { background: var(--accent2); border-color: var(--accent2); }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(192,86,79,.5); } 50% { box-shadow: 0 0 0 14px rgba(192,86,79,0); } }
+  #textIn { flex: 1; background: var(--bg); color: var(--text); border: 1px solid #443a33; border-radius: var(--radius); padding: 12px; font-size: .95rem; font-family: inherit; }
+  #status { font-size: .78rem; color: var(--muted); padding: 0 16px 8px; background: var(--panel); text-align: center; min-height: 1.2em; }
+  #interim { color: var(--accent); font-style: italic; }
+  .toggleRow { display: flex; align-items: center; gap: 8px; font-size: .85rem; }
+  .toggleRow input { width: auto; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🎙️ Hlasový grill — nemilosrdný výsluch po slovensky</h1>
+  <button id="setupBtn" title="Nastavenia">⚙️</button>
+  <button id="copyBtn" title="Kopírovať finálny súhrn do schránky (vlož ho do Claude Code session)">📋 Súhrn</button>
+  <button id="exportBtn" title="Stiahnuť prepis ako Markdown">💾 Export</button>
+  <button id="resetBtn" class="danger" title="Nový rozhovor">↺</button>
+</header>
+
+<div id="setup">
+  <div class="row">
+    <div>
+      <label>Poskytovateľ (mozog grilu)</label>
+      <select id="provider">
+        <option value="claude">Claude (najvernejší grill — platený kľúč)</option>
+        <option value="gemini">Gemini (free tier)</option>
+      </select>
+    </div>
+    <div>
+      <label id="keyLabel">Claude API kľúč (uloží sa len lokálne v prehliadači)</label>
+      <input type="password" id="apiKey" placeholder="sk-ant-...">
+    </div>
+  </div>
+  <div class="row">
+    <div>
+      <label>Model</label>
+      <select id="model"></select>
+    </div>
+    <div>
+      <label>Hlas (SK TTS — podľa hlasov v systéme)</label>
+      <select id="voiceSel"></select>
+    </div>
+  </div>
+  <div class="row">
+    <div>
+      <label>Rýchlosť reči: <span id="rateVal">1.0</span></label>
+      <input type="range" id="rate" min="0.6" max="1.6" step="0.1" value="1.0">
+    </div>
+    <div>
+      <label>Pauza ticha pred odoslaním: <span id="pauseVal">4.0</span> s (kľud na premýšľanie; 🎤 = pošli hneď)</label>
+      <input type="range" id="pause" min="2" max="8" step="0.5" value="4">
+    </div>
+  </div>
+  <div>
+    <label>Kontext / cieľ na grilovanie (vlož čokoľvek — plán, cieľ, dizajn)</label>
+    <textarea id="context"></textarea>
+  </div>
+  <div class="toggleRow">
+    <input type="checkbox" id="handsfree" checked>
+    <label for="handsfree" style="margin:0">Hands-free slučka (po dohovorení odpovede automaticky počúvaj)</label>
+  </div>
+  <div class="toggleRow">
+    <input type="checkbox" id="review">
+    <label for="review" style="margin:0">Skontrolovať prepis pred odoslaním (padne do textového poľa — doopravíš a Enter)</label>
+  </div>
+  <div class="hint">Mikrofón vyžaduje Chrome/Edge a beh cez <b>http://localhost</b> (spusti START.ps1) alebo https. Rozpoznávanie reči (sk-SK) beží cez službu prehliadača.</div>
+  <button class="primary" id="startBtn">▶ Začať grill</button>
+</div>
+
+<div id="chat"></div>
+<div id="status"></div>
+
+<div id="controls">
+  <button id="micBtn" title="Podrž alebo klikni pre hovorenie">🎤</button>
+  <input type="text" id="textIn" placeholder="…alebo napíš odpoveď a stlač Enter">
+  <button id="stopBtn" title="Zastaviť reč/počúvanie">⏹</button>
+</div>
+
+<script>
+"use strict";
+
+/* ---------- grilling system prompt (port skillu 'grilling' pre hlasový režim) ---------- */
+const GRILL_PROMPT = `Si "grilling" motor — vedieš NEMILOSRDNÝ hovorený výsluch po slovensky o pláne, dizajne alebo cieli používateľa, kým nie je každá vetva rozhodovacieho stromu vyriešená a nedosiahnete zdieľané porozumenie.
+
+PRAVIDLÁ VÝSLUCHU (dodržuj počas celej session, aj pri dlhom rozhovore):
+1. JEDNA otázka naraz. Polož jednu otázku a čakaj na odpoveď. Nikdy viac otázok v jednom kole.
+2. Ku každej otázke pridaj svoju ODPORÚČANÚ odpoveď + jednou vetou prečo — nech ju používateľ len potvrdí alebo opraví.
+3. Pýtaj sa len na to, čo sa z poskytnutého kontextu zistiť nedá (rozhodnutia, preferencie, biznis kontext). Čo v kontexte je, nepýtaj sa znova.
+4. Choď za hrany: cieľ, rozsah (čo explicitne NIE JE v rozsahu), obmedzenia, rozhodnutia na každom rozdvojení, riziká a hraničné prípady, čo znamená "hotovo".
+5. KALIBRUJ HĹBKU: nezvratné a drahé rozhodnutia (záväzky, verejné/právne/finančné kroky) griluj tvrdo a do hĺbky; triviálne a ľahko zvratné veci len rýchlo potvrď a choď ďalej — nezdržuj sa nimi.
+6. PRIEBEŽNÝ CHECKPOINT: po každých zhruba 3-4 vyriešených otázkach jednou vetou zhrň, čo je už vyriešené a čo ešte ostáva otvorené — používateľ strom nevidí, tak mu drž niť.
+
+HOVORENÝ REŽIM (tvoje odpovede číta syntéza reči nahlas):
+- Krátke repliky: max 3-4 vety na kolo. Hovorený, prirodzený jazyk.
+- Žiadny markdown, žiadne odrážky, žiadne emoji, žiadne nadpisy — len plynulý text. (Jediná výnimka: finálny súhrn.)
+- Čísla a skratky vyslovuj tak, ako sa čítajú.
+
+VSTUP JE HLASOVÝ PREPIS (rozpoznávanie reči sk-SK), počítaj s chybami:
+- Používateľ mieša slovenčinu s anglicizmami (pipeline, handoff, workflow, deadline...) — rozpoznávanie ich často skomolí na podobne znejúce slovenské slová. Interpretuj benevolentne podľa kontextu témy.
+- Ak je kľúčové slovo alebo číslo nezrozumiteľné či podozrivé, radšej si ho jednou vetou over, než na ňom postavíš záver.
+- Útržkovitú alebo predčasne ukončenú odpoveď ber ako neúplnú — vyžiadaj si dokončenie, nedomýšľaj si.
+
+UKONČENIE:
+Keď je strom vyriešený, povedz "GRIL UKONČENÝ" a vypíš súhrn presne v tomto formáte (tu výnimočne so štruktúrou):
+CIEĽ — jedna veta, deklaratívne
+OBMEDZENIA — bodový zoznam
+ČO ODKLADÁME — explicitne mimo rozsahu
+KRITÉRIÁ ÚSPECHU — overiteľné, ako spoznáme že je hotovo
+ROZHODNUTIA — kľúčové voľby + dôvod, jeden riadok každá
+
+Prvé kolo: privítaj používateľa jednou vetou a polož prvú, najdôležitejšiu otázku (s odporúčanou odpoveďou).`;
+
+const DEFAULT_CONTEXT = `Sem vlož, čo ideme grilovať — plán, cieľ, dizajn alebo rozhodnutie. Čím viac kontextu, tým menej zbytočných otázok. Užitočná štruktúra:
+
+CIEĽ / ZÁMER: čo chcem dosiahnuť a dokedy
+STAV: čo už existuje / je rozhodnuté
+OTVORENÉ OTÁZKY: čo ma trápi, kde váham
+OBMEDZENIA: čas, peniaze, ľudia, technika`;
+
+/* ---------- state ---------- */
+const $ = id => document.getElementById(id);
+const PROVIDERS = {
+  claude: {
+    keyLabel: "Claude API kľúč (uloží sa len lokálne v prehliadači)",
+    keyPlaceholder: "sk-ant-...",
+    models: [
+      ["claude-sonnet-5", "Sonnet 5 (odporúčané — cena/výkon)"],
+      ["claude-opus-4-8", "Opus 4.8 (najsilnejší grill, drahší)"],
+      ["claude-haiku-4-5-20251001", "Haiku 4.5 (najlacnejší)"],
+    ],
+    defaultModel: "claude-sonnet-5",
+  },
+  gemini: {
+    keyLabel: "Gemini API kľúč (aistudio.google.com/apikey — free tier)",
+    keyPlaceholder: "AIza...",
+    models: [
+      ["gemini-2.5-flash", "Gemini 2.5 Flash (free tier)"],
+      ["gemini-2.5-pro", "Gemini 2.5 Pro (silnejší, prísnejšie free limity)"],
+    ],
+    defaultModel: "gemini-2.5-flash",
+  },
+};
+const store = {
+  get provider() { return localStorage.getItem("vg_provider") || "claude"; },
+  set provider(v) { localStorage.setItem("vg_provider", v); },
+  get k() { return localStorage.getItem(this.provider === "gemini" ? "vg_gkey" : "vg_key") || ""; },
+  set k(v) { localStorage.setItem(this.provider === "gemini" ? "vg_gkey" : "vg_key", v); },
+  get model() { return localStorage.getItem(this.provider === "gemini" ? "vg_gmodel" : "vg_model") || PROVIDERS[this.provider].defaultModel; },
+  set model(v) { localStorage.setItem(this.provider === "gemini" ? "vg_gmodel" : "vg_model", v); },
+  get rate() { return parseFloat(localStorage.getItem("vg_rate") || "1.0"); },
+  set rate(v) { localStorage.setItem("vg_rate", v); },
+  get voice() { return localStorage.getItem("vg_voice") || ""; },
+  set voice(v) { localStorage.setItem("vg_voice", v); },
+  get ctx() { return localStorage.getItem("vg_ctx") ?? DEFAULT_CONTEXT; },
+  set ctx(v) { localStorage.setItem("vg_ctx", v); },
+  get pause() { return parseFloat(localStorage.getItem("vg_pause") || "4"); },
+  set pause(v) { localStorage.setItem("vg_pause", v); },
+  get review() { return localStorage.getItem("vg_review") === "1"; },
+  set review(v) { localStorage.setItem("vg_review", v ? "1" : "0"); },
+};
+
+let messages = [];        // {role, content}
+let listening = false;
+let busy = false;         // API call in flight
+let started = false;
+
+/* ---------- setup UI ---------- */
+function refreshProviderUI() {
+  const p = PROVIDERS[store.provider];
+  $("provider").value = store.provider;
+  $("keyLabel").textContent = p.keyLabel;
+  $("apiKey").placeholder = p.keyPlaceholder;
+  $("apiKey").value = store.k;
+  const sel = $("model");
+  sel.innerHTML = "";
+  for (const [val, label] of p.models) {
+    const o = document.createElement("option");
+    o.value = val; o.textContent = label;
+    sel.appendChild(o);
+  }
+  sel.value = store.model;
+}
+refreshProviderUI();
+$("rate").value = store.rate;
+$("rateVal").textContent = store.rate.toFixed(1);
+$("context").value = store.ctx;
+
+$("pause").value = store.pause;
+$("pauseVal").textContent = store.pause.toFixed(1);
+$("review").checked = store.review;
+
+$("provider").onchange = e => { store.provider = e.target.value; refreshProviderUI(); };
+$("rate").oninput = e => { store.rate = e.target.value; $("rateVal").textContent = (+e.target.value).toFixed(1); };
+$("pause").oninput = e => { store.pause = e.target.value; $("pauseVal").textContent = (+e.target.value).toFixed(1); };
+$("review").onchange = e => store.review = e.target.checked;
+$("apiKey").onchange = e => store.k = e.target.value.trim();
+$("model").onchange = e => store.model = e.target.value;
+$("context").onchange = e => store.ctx = e.target.value;
+$("setupBtn").onclick = () => $("setup").classList.toggle("hidden");
+
+/* ---------- voices ---------- */
+function loadVoices() {
+  const sel = $("voiceSel");
+  const voices = speechSynthesis.getVoices();
+  if (!voices.length) return; // zoznam sa načítava asynchrónne — počkaj na onvoiceschanged
+  sel.innerHTML = "";
+  const sk = voices.filter(v => v.lang.toLowerCase().startsWith("sk"));
+  const cs = voices.filter(v => v.lang.toLowerCase().startsWith("cs"));
+  const list = sk.length ? sk : (cs.length ? cs : voices);
+  for (const v of list) {
+    const o = document.createElement("option");
+    o.value = v.name; o.textContent = `${v.name} (${v.lang})`;
+    sel.appendChild(o);
+  }
+  setStatus(sk.length ? "" : (cs.length ? "⚠️ SK hlas nenájdený — použijem český. Doinštaluj SK hlas: Nastavenia Windows → Čas a jazyk → Reč." : "⚠️ SK/CZ hlas nenájdený — výstup bude znieť cudzo. Doinštaluj SK hlas vo Windows."));
+  if (store.voice && [...sel.options].some(o => o.value === store.voice)) sel.value = store.voice;
+  sel.onchange = e => store.voice = e.target.value;
+}
+speechSynthesis.onvoiceschanged = loadVoices;
+loadVoices();
+
+/* ---------- UI helpers ---------- */
+function addMsg(role, text) {
+  const d = document.createElement("div");
+  d.className = "msg " + role;
+  d.textContent = text;
+  $("chat").appendChild(d);
+  $("chat").scrollTop = $("chat").scrollHeight;
+  return d;
+}
+function setStatus(t, interim) {
+  $("status").innerHTML = interim ? `<span id="interim">${t}</span>` : t;
+}
+function setMicState(s) { // "idle" | "listening" | "speaking"
+  const b = $("micBtn");
+  b.classList.toggle("listening", s === "listening");
+  b.classList.toggle("speaking", s === "speaking");
+  b.textContent = s === "listening" ? "🔴" : s === "speaking" ? "🔊" : "🎤";
+}
+
+/* ---------- TTS ---------- */
+function speak(text) {
+  return new Promise(resolve => {
+    speechSynthesis.cancel();
+    // chunk by sentences — long utterances get cut off in Chrome
+    const chunks = text.match(/[^.!?…\n]+[.!?…]?/g) || [text];
+    const voice = speechSynthesis.getVoices().find(v => v.name === store.voice);
+    let i = 0;
+    setMicState("speaking");
+    const next = () => {
+      if (i >= chunks.length) { setMicState("idle"); resolve(); return; }
+      const u = new SpeechSynthesisUtterance(chunks[i++].trim());
+      if (voice) u.voice = voice;
+      u.lang = voice ? voice.lang : "sk-SK";
+      u.rate = store.rate;
+      u.onend = next;
+      u.onerror = next;
+      speechSynthesis.speak(u);
+    };
+    next();
+  });
+}
+
+/* ---------- STT (kontinuálne + vlastný časovač ticha) ----------
+   Web Speech ukončuje rozpoznávanie pri krátkej pauze — pri premýšľaní nahlas
+   by odoslalo polovičnú odpoveď. Preto: continuous mód, finálne úseky sa
+   akumulujú, odosiela sa až po store.pause sekundách ticha. Klik na 🎤 počas
+   počúvania = "dohovoril som, pošli hneď". */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null;
+let wantListening = false;   // úmysel počúvať (prežije reštarty recognition)
+let sttText = "";            // akumulovaný finálny prepis
+let lastResultTs = 0;
+let silenceTimer = null;
+
+function startListening() {
+  if (!SR) { setStatus("❌ Prehliadač nepodporuje SpeechRecognition — použi Chrome/Edge, alebo píš text."); return; }
+  if (wantListening || busy) return;
+  wantListening = true;
+  sttText = "";
+  listening = true;
+  setMicState("listening");
+  setStatus("🎙️ Počúvam… hovor. (pauza " + store.pause.toFixed(1) + " s odošle, 🎤 odošle hneď)");
+  beginRec();
+  lastResultTs = Date.now();
+  clearInterval(silenceTimer);
+  silenceTimer = setInterval(() => {
+    if (!wantListening) { clearInterval(silenceTimer); return; }
+    if (sttText.trim() && Date.now() - lastResultTs > store.pause * 1000) finishListening();
+  }, 250);
+}
+
+function beginRec() {
+  rec = new SR();
+  rec.lang = "sk-SK";
+  rec.interimResults = true;
+  rec.continuous = true;
+  rec.onresult = e => {
+    lastResultTs = Date.now();
+    let interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const r = e.results[i];
+      if (r.isFinal) sttText += r[0].transcript + " ";
+      else interim += r[0].transcript;
+    }
+    setStatus("🎙️ " + sttText + interim, true);
+  };
+  rec.onend = () => {
+    // prehliadač rozpoznávanie sám ukončuje — kým chceme počúvať, reštartuj
+    if (wantListening) { try { beginRec(); } catch { finishListening(); } }
+  };
+  rec.onerror = e => {
+    if (e.error === "no-speech" || e.error === "aborted") return; // onend to reštartne / úmyselné
+    wantListening = false;
+    clearInterval(silenceTimer);
+    listening = false; setMicState("idle");
+    setStatus(e.error === "not-allowed"
+      ? "❌ Mikrofón zamietnutý. Povoľ ho v prehliadači (ikona 🔒 pri adrese) a bež cez localhost/https."
+      : "STT chyba: " + e.error);
+  };
+  rec.start();
+}
+
+function finishListening() {
+  wantListening = false;
+  clearInterval(silenceTimer);
+  if (rec) { rec.onend = null; try { rec.stop(); } catch {} }
+  listening = false;
+  setMicState("idle");
+  const t = sttText.trim();
+  sttText = "";
+  if (!t) { setStatus("Nič som nezachytil — klikni 🎤 a skús znova, alebo napíš text."); return; }
+  if (store.review) {
+    $("textIn").value = t;
+    $("textIn").focus();
+    setStatus("✏️ Skontroluj/oprav prepis a stlač Enter.");
+  } else {
+    send(t);
+  }
+}
+
+function stopAll() {
+  wantListening = false;
+  clearInterval(silenceTimer);
+  sttText = "";
+  if (rec) { rec.onend = null; try { rec.abort(); } catch {} }
+  speechSynthesis.cancel();
+  listening = false;
+  setMicState("idle");
+  setStatus("Zastavené.");
+}
+
+/* ---------- LLM API (Claude / Gemini) ---------- */
+async function callLLM() {
+  const sys = GRILL_PROMPT + "\n\n===== KONTEXT OD POUŽÍVATEĽA =====\n" + $("context").value.trim();
+  let res;
+  if (store.provider === "gemini") {
+    res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${store.model}:generateContent?key=${encodeURIComponent(store.k)}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: sys }] },
+        contents: messages.map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })),
+        generationConfig: { maxOutputTokens: 900 },
+      }),
+    });
+    if (!res.ok) throw new Error(`Gemini API ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    const data = await res.json();
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    const text = parts.map(p => p.text || "").join("\n").trim();
+    if (!text) throw new Error("Gemini vrátil prázdnu odpoveď (finishReason: " + (data.candidates?.[0]?.finishReason || "?") + ")");
+    return text;
+  }
+  res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": store.k,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify({
+      model: store.model,
+      max_tokens: 900,
+      system: sys,
+      messages: messages,
+    }),
+  });
+  if (!res.ok) throw new Error(`Claude API ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  const data = await res.json();
+  return data.content.filter(b => b.type === "text").map(b => b.text).join("\n").trim();
+}
+
+async function send(userText) {
+  if (busy) return;
+  busy = true;
+  if (userText !== null) {
+    messages.push({ role: "user", content: userText });
+    addMsg("user", userText);
+  }
+  setStatus("🤔 Premýšľam…");
+  try {
+    const reply = await callLLM();
+    messages.push({ role: "assistant", content: reply });
+    addMsg("assistant", reply);
+    setStatus("");
+    await speak(reply);
+    const done = /GRIL UKONČENÝ/i.test(reply);
+    busy = false;
+    if (done) { setStatus("✅ Gril ukončený — 📋 Súhrn skopíruje výsledok pre session, 💾 Export stiahne celý prepis."); return; }
+    if ($("handsfree").checked) startListening();
+  } catch (e) {
+    busy = false;
+    setStatus("❌ " + e.message);
+    addMsg("system", "Chyba: " + e.message);
+  }
+}
+
+/* ---------- start / controls ---------- */
+$("startBtn").onclick = async () => {
+  if (!store.k) { setStatus("❌ Vlož najprv API kľúč pre " + (store.provider === "gemini" ? "Gemini" : "Claude") + "."); return; }
+  $("setup").classList.add("hidden");
+  if (!started) {
+    started = true;
+    messages = [{ role: "user", content: "Začni výsluch." }];
+    addMsg("system", "Gril spustený — " + store.provider + " / " + store.model);
+    busy = true;
+    setStatus("🤔 Pripravujem prvú otázku…");
+    try {
+      const reply = await callLLM();
+      messages.push({ role: "assistant", content: reply });
+      addMsg("assistant", reply);
+      setStatus("");
+      await speak(reply);
+      busy = false;
+      if ($("handsfree").checked) startListening();
+    } catch (e) { busy = false; setStatus("❌ " + e.message); }
+  }
+};
+
+$("micBtn").onclick = () => {
+  if (speechSynthesis.speaking) { speechSynthesis.cancel(); setMicState("idle"); }
+  listening ? rec.stop() : startListening();
+};
+$("stopBtn").onclick = stopAll;
+$("textIn").addEventListener("keydown", e => {
+  if (e.key === "Enter" && $("textIn").value.trim() && !busy) {
+    speechSynthesis.cancel();
+    const t = $("textIn").value.trim();
+    $("textIn").value = "";
+    if (!started) { setStatus("Najprv klikni ▶ Začať grill."); return; }
+    send(t);
+  }
+});
+
+$("resetBtn").onclick = () => {
+  if (!confirm("Začať nový rozhovor? Aktuálny prepis sa stratí (najprv Export, ak ho chceš).")) return;
+  stopAll(); messages = []; started = false; busy = false;
+  $("chat").innerHTML = ""; $("setup").classList.remove("hidden"); setStatus("");
+};
+
+$("copyBtn").onclick = async () => {
+  const asst = messages.filter(m => m.role === "assistant");
+  if (!asst.length) { setStatus("Ešte niet čo kopírovať."); return; }
+  const final = [...asst].reverse().find(m => /GRIL UKONČENÝ/i.test(m.content));
+  const text = (final || asst[asst.length - 1]).content;
+  try {
+    await navigator.clipboard.writeText(text);
+    setStatus(final ? "📋 Finálny súhrn skopírovaný — vlož ho do Claude Code session." : "📋 Súhrn ešte nie je hotový — skopírovaná posledná odpoveď.");
+  } catch { setStatus("❌ Kopírovanie zlyhalo — použi 💾 Export."); }
+};
+
+$("exportBtn").onclick = () => {
+  if (!messages.length) { setStatus("Niet čo exportovať."); return; }
+  const lines = ["# Hlasový grill — prepis", "", "Dátum: " + new Date().toISOString().slice(0, 16).replace("T", " "), "Model: " + store.provider + " / " + store.model, "", "## Kontext", "", $("context").value.trim(), "", "## Rozhovor", ""];
+  for (const m of messages) {
+    if (m.content === "Začni výsluch.") continue;
+    lines.push((m.role === "user" ? "**Ja:** " : "**Grill:** ") + m.content, "");
+  }
+  const blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "grill_prepis_" + new Date().toISOString().slice(0, 10) + ".md";
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+if (!SR) setStatus("⚠️ Tento prehliadač nepodporuje rozpoznávanie reči — použi Chrome alebo Edge.");
+</script>
+</body>
+</html>
