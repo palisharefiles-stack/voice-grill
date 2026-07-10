@@ -1,5 +1,7 @@
 # 🎙️ Hlasový grill (SK)
 
+**Živá verzia (mobil aj PC):** https://palisharefiles-stack.github.io/voice-grill/
+
 Živý hovorený `/grill-me` výsluch po slovensky — jedna HTML stránka, Web Speech API (STT sk-SK + TTS) + priame volanie **Claude API alebo Gemini API** s portovaným promptom skillu `grilling`.
 
 Vznikol z researchu `SK_VOICE_GRILLME_MOZNOSTI.md` (možnosť 1 — „postaviť raz, používať navždy").
@@ -26,7 +28,9 @@ Gril končí súhrnom **„GRIL UKONČENÝ"** (CIEĽ / OBMEDZENIA / ČO ODKLADÁ
 
 ## Mobil (Samsung S25)
 
-Localhost z PC nie je z telefónu dostupný — použi nasadenú verziu na GitHub Pages (URL v spodku súboru / v pamäti projektu). V Chrome na Androide funguje SK rozpoznávanie aj SK hlas (Google TTS — over Nastavenia → Prevod textu na reč). API kľúč vložíš na telefóne raz, ostane v prehliadači.
+Localhost z PC nie je z telefónu dostupný — otvor v Chrome na telefóne **https://palisharefiles-stack.github.io/voice-grill/** (https, takže mikrofón funguje). Funguje SK rozpoznávanie aj SK hlas (Google TTS — over Nastavenia → Prevod textu na reč). API kľúč vložíš na telefóne raz, ostane v prehliadači.
+
+Aktualizácia: keď zmeníš `index.html`, `git -C C:\AI\voice-grill add . ; git commit -m "..." ; git push` — Pages sa prebuduje do minúty.
 
 ## Poznámky
 
